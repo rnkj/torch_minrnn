@@ -1,0 +1,15 @@
+[project]
+name = "minrnn"
+version = "0.0.1"
+description = "PyTorch implementation of minimal RNNs"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Ryoichi Nakajo", email = "ryoichi-nakajo@aist.go.jp" }
+]
+requires-python = ">=3.10"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
