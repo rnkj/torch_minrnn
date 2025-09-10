@@ -50,10 +50,13 @@ MIT License
 [Minimal RNNs: Efficient and Interpretable Recurrent Neural Networks](https://arxiv.org/abs/2410.01201)
 
 ```
-@article{feng2024minimal,
-    title={Minimal RNNs: Efficient and Interpretable Recurrent Neural Networks},
-    author={Feng, Y. and Nakajo, R. and Ogata, T.},
-    journal={arXiv preprint arXiv:2410.01201},
-    year={2024}
+@misc{feng2024rnnsneeded,
+      title={Were RNNs All We Needed?}, 
+      author={Leo Feng and Frederick Tung and Mohamed Osama Ahmed and Yoshua Bengio and Hossein Hajimirsadeghi},
+      year={2024},
+      eprint={2410.01201},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2410.01201}, 
 }
 ```
