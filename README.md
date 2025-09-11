@@ -51,12 +51,12 @@ MIT License
 
 ```
 @misc{feng2024rnnsneeded,
-      title={Were RNNs All We Needed?}, 
+      title={Were RNNs All We Needed?},
       author={Leo Feng and Frederick Tung and Mohamed Osama Ahmed and Yoshua Bengio and Hossein Hajimirsadeghi},
       year={2024},
       eprint={2410.01201},
       archivePrefix={arXiv},
       primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2410.01201}, 
+      url={https://arxiv.org/abs/2410.01201},
 }
 ```

@@ -18,9 +18,7 @@ def print_runtime_result(lap_times: list[float]) -> None:
     std = stdev(lap_times)
 
     print(f"Duration: {duration:.2f} [s]")
-    print(
-        f"{average:.4f} [s] " "\u00b1" f" {std:.4f} [s] of {num_repeats} runs"
-    )
+    print(f"{average:.4f} [s] " "\u00b1" f" {std:.4f} [s] of {num_repeats} runs")
 
 
 def rnn_forward_backward(rnn: nn.RNNCellBase, inputs: Tensor) -> None:
@@ -103,9 +101,7 @@ def runtime_test(
     min_lstm = MinLSTMCell(input_size, hidden_size).to(device)
 
     # define an input tensor
-    dummy_inputs = torch.randn(
-        (batch_size, seq_length, input_size), device=device
-    )
+    dummy_inputs = torch.randn((batch_size, seq_length, input_size), device=device)
 
     print_info(f"Run the forward-backward processes for {num_repeats} times")
 

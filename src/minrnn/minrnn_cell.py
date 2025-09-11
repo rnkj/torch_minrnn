@@ -14,9 +14,7 @@ def parallel_scan_log(log_coeffs, log_values):
     """
     # log_coeffs: (batch_size, seq_len, input_size)
     # log_values: (batch_size, seq_len + 1, input_size)
-
-    a_star = F.pad(torch.cumsum(log_coeffs, dim=1), (0, 0, 1, 0))
-
+    a_star = torch.cumsum(log_coeffs, dim=1)
     log_h0_plus_b_star = torch.logcumsumexp(log_values - a_star, dim=1)
     log_h = a_star + log_h0_plus_b_star
     return torch.exp(log_h)
@@ -37,9 +35,7 @@ def log_g(x: Tensor) -> Tensor:
 
 
 class MinRNNCellBase(nn.Module):
-    def parallel_forward(
-        self, input: Tensor, hx: Optional[Tensor] = None
-    ) -> Tensor:
+    def parallel_forward(self, input: Tensor, hx: Optional[Tensor] = None) -> Tensor:
         """Forward computation in parallel mode of minimal RNNs. The parallel
         mode should be used during the training.
 
@@ -50,9 +46,7 @@ class MinRNNCellBase(nn.Module):
         """
         raise NotImplementedError
 
-    def sequential_forward(
-        self, input: Tensor, hx: Optional[Tensor] = None
-    ) -> Tensor:
+    def sequential_forward(self, input: Tensor, hx: Optional[Tensor] = None) -> Tensor:
         """Forward computation in sequential mode of minimal RNNs. The
         sequential mode should be used during the inference.
 
@@ -102,59 +96,38 @@ class MinGRUCell(MinRNNCellBase):
 
         self.linear_ih = nn.Linear(input_size, 2 * hidden_size, bias=True)
 
-    def parallel_forward(
-        self, input: Tensor, hx: Optional[Tensor] = None
-    ) -> Tensor:
-        if hx is None:
-            hx = torch.zeros(
-                input.size(0),
-                self.hidden_size,
-                dtype=input.dtype,
-                device=input.device,
-            )
-            hx = hx + 1e-6  # avoid log(0)
-
-        if hx.dim() != 2:
-            raise ValueError(
-                f"MinGRUCell: Expected hidden to be 2D, got {hx.dim()}D instead"
-            )
-
-        # for sequential computation, expand shape to (N, 1, H_hid)
-        hx = hx.unsqueeze(1)
-
+    def parallel_forward(self, input: Tensor, hx: Optional[Tensor] = None) -> Tensor:
         if input.dim() != 3:
             raise ValueError(
                 "MinGRUCell: Expected input to be 3D in training mode, "
                 f"got {input.dim()}D instead"
             )
+        seq_len = input.size(1)
 
         z, h_inter = self.linear_ih(input).chunk(2, dim=-1)
 
         log_z = -F.softplus(-z)
         log_coeffs = -F.softplus(z)
-        log_h_0 = hx.log()
         log_tilde_h = log_g(h_inter)
-        h = parallel_scan_log(
-            log_coeffs, torch.cat([log_h_0, log_z + log_tilde_h], dim=1)
-        )
-        return h[:, 1:]
 
-    def sequential_forward(
-        self, input: Tensor, hx: Optional[Tensor] = None
-    ) -> Tensor:
         if hx is None:
-            hx = torch.zeros(
-                input.size(0),
-                self.hidden_size,
-                dtype=input.dtype,
-                device=input.device,
-            )
+            log_values = log_z + log_tilde_h
+        else:
+            if hx.dim() != 2:
+                raise ValueError(
+                    f"MinGRUCell: Expected hidden to be 2D, got {hx.dim()}D instead"
+                )
 
-        if hx.dim() != 2:
-            raise ValueError(
-                f"MinGRUCell: Expected hidden to be 2D, got {hx.dim()}D instead"
-            )
+            # for sequential computation, expand shape to (N, 1, H_hid)
+            hx = hx.unsqueeze(1)
+            log_h_0 = hx.log()
+            log_values = torch.cat([log_h_0, log_z + log_tilde_h], dim=1)
+            log_coeffs = F.pad(log_coeffs, (0, 0, 1, 0))
 
+        h = parallel_scan_log(log_coeffs, log_values)
+        return h[:, -seq_len:]
+
+    def sequential_forward(self, input: Tensor, hx: Optional[Tensor] = None) -> Tensor:
         if input.dim() != 2:
             raise ValueError(
                 "MinGRUCell: Expected input to be 2D in evaluation mode, "
@@ -165,7 +138,14 @@ class MinGRUCell(MinRNNCellBase):
 
         z = torch.sigmoid(z)
         h_tilde = g(h_inter)
-        h_t = (1 - z) * hx + z * h_tilde
+        if hx is None:
+            h_t = z * h_tilde
+        else:
+            if hx.dim() != 2:
+                raise ValueError(
+                    f"MinGRUCell: Expected hidden to be 2D, got {hx.dim()}D instead"
+                )
+            h_t = (1 - z) * hx + z * h_tilde
         return h_t
 
 
@@ -190,60 +170,39 @@ class MinLSTMCell(MinRNNCellBase):
 
         self.linear_ih = nn.Linear(input_size, 3 * hidden_size, bias=True)
 
-    def parallel_forward(
-        self, input: Tensor, hx: Optional[Tensor] = None
-    ) -> Tensor:
-        if hx is None:
-            hx = torch.zeros(
-                input.size(0),
-                self.hidden_size,
-                dtype=input.dtype,
-                device=input.device,
-            )
-            hx = hx + 1e-6  # avoid log(0)
-
-        if hx.dim() != 2:
-            raise ValueError(
-                f"MinLSTMCell: Expected hidden to be 2D, got {hx.dim()}D instead"
-            )
-
-        # for sequential computation, expand shape to (N, 1, H_hid)
-        hx = hx.unsqueeze(1)
-
+    def parallel_forward(self, input: Tensor, hx: Optional[Tensor] = None) -> Tensor:
         if input.dim() != 3:
             raise ValueError(
                 "MinLSTMCell: Expected input to be 3D in training mode, "
                 f"got {input.dim()}D instead"
             )
+        seq_len = input.size(1)
 
         f_inter, i_inter, h_inter = self.linear_ih(input).chunk(3, dim=-1)
 
         diff = F.softplus(-f_inter) - F.softplus(-i_inter)
         log_f = -F.softplus(diff)
         log_i = -F.softplus(-diff)
-        log_h_0 = hx.log()
         log_tilde_h = log_g(h_inter)
-        h = parallel_scan_log(
-            log_f, torch.cat([log_h_0, log_i + log_tilde_h], dim=1)
-        )
-        return h[:, 1:]
 
-    def sequential_forward(
-        self, input: Tensor, hx: Optional[Tensor] = None
-    ) -> Tensor:
         if hx is None:
-            hx = torch.zeros(
-                input.size(0),
-                self.hidden_size,
-                dtype=input.dtype,
-                device=input.device,
-            )
+            log_values = log_i + log_tilde_h
+        else:
+            if hx.dim() != 2:
+                raise ValueError(
+                    f"MinLSTMCell: Expected hidden to be 2D, got {hx.dim()}D instead"
+                )
 
-        if hx.dim() != 2:
-            raise ValueError(
-                f"MinLSTMCell: Expected hidden to be 2D, got {hx.dim()}D instead"
-            )
+            # for sequential computation, expand shape to (N, 1, H_hid)
+            hx = hx.unsqueeze(1)
+            log_h_0 = hx.log()
+            log_values = torch.cat([log_h_0, log_i + log_tilde_h], dim=1)
+            log_f = F.pad(log_f, (0, 0, 1, 0))
 
+        h = parallel_scan_log(log_f, log_values)
+        return h[:, -seq_len:]
+
+    def sequential_forward(self, input: Tensor, hx: Optional[Tensor] = None) -> Tensor:
         if input.dim() != 2:
             raise ValueError(
                 "MinLSTMCell: Expected input to be 2D in evaluation mode, "
@@ -257,5 +216,14 @@ class MinLSTMCell(MinRNNCellBase):
         tilde_h_t = g(h_inter)
         f_prime_t = f_t / (f_t + i_t)
         i_prime_t = i_t / (f_t + i_t)
-        h_t = f_prime_t * hx + i_prime_t * tilde_h_t
+
+        if hx is None:
+            h_t = i_prime_t * tilde_h_t
+        else:
+            if hx.dim() != 2:
+                raise ValueError(
+                    f"MinLSTMCell: Expected hidden to be 2D, got {hx.dim()}D instead"
+                )
+            h_t = f_prime_t * hx + i_prime_t * tilde_h_t
+
         return h_t
